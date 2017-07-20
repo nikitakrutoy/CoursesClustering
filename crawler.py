@@ -9,6 +9,9 @@ import logging.config
 
 import coloredlogs
 
+from utils import *
+from tst import test1
+
 coloredlogs.install(level='DEBUG')
 
 DEFAULT_LOGGING = {
@@ -40,7 +43,7 @@ def isField(tag):
 # Сущестование страницы проверяем функцией isLastPage
 # Если не сущетвует выходим из функции
 def parse():
-    programsInfo = {}
+    program = []
     page = 0
     URL = "https://www.hse.ru/edu/courses/page{0}.html?language=&edu_level=78397&full_words=&genelective=-1&xlc=&words=&level=1191462%3A130721827&edu_year=2016&filial=22723&mandatory=&is_dpo=0&lecturer="
     while True:
@@ -49,18 +52,19 @@ def parse():
         response = requests.post(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         if isLastPage(soup):
-            return programsInfo
-        programs = soup.find_all(
+            return program
+        courses = soup.find_all(
             "div",
             {"class": "first_child last_child b-program__inner"})
-        for program in programs:
+        for course in courses:
             # Берем все значения, кроме года потому что его неудобно парсить))00)0
-            programDescription = {}
-            programName = program.find("h2").string.strip()
+            courseDescription = {}
+            courseName = course.find("h2").string.strip()
+            courseDescription["Название"] = courseName
             # Уберем ненужные теги
-            program = program.find("div", {"class": "last_child data"})
+            course = course.find("div", {"class": "last_child data"})
             #Описания
-            fields = program.find_all(isField)
+            fields = course.find_all(isField)
             for field in fields:
                 data = []   # strings in tag
                 #  Костыль чтобы вытащить из тэга его текст
@@ -79,21 +83,21 @@ def parse():
                     key = u'Преподаватели'
                     links = field.find_all("a")
                     teachers = [link.string for link in links if link.string]
-                    programDescription[key] = teachers
+                    courseDescription[key] = teachers
                 elif key == u"Автор" or key == u"Авторы":
                     # Забираем имена авторов из всех ссылок данного поля
                     key = u'Авторы'
                     links = field.find_all("a")
                     authors = [link.string for link in links if link.string]
-                    programDescription[key] = authors
+                    courseDescription[key] = authors
                 elif key == u"Прогр. уч. дисц.":
                     pdf_link = field.find_all("a", limit=2)
                     pdf_link = pdf_link[1]
-                    programDescription[key] = pdf_link["href"]
+                    courseDescription[key] = pdf_link["href"]
                 else:
-                    programDescription[key] = data[1]
+                    courseDescription[key] = data[1]
 
-            programsInfo[programName] = programDescription
+            program.append(courseDescription)
 
 
 def writeJson(data):
@@ -109,11 +113,10 @@ def download(data):
         os.stat("pdf")
     except:
         os.mkdir("pdf")
-    pdfDir = currentDir + "/pdfDir/pdf"
+    pdfDir = currentDir + "/pdf/"
 
     id = 0
-    for courseName in data:
-        course = data[courseName]
+    for course in data:
         id += 1
         course["id"] = id
         if u"Прогр. уч. дисц." in course:
@@ -121,15 +124,21 @@ def download(data):
             logging.debug("Download started")
             response = requests.get(url)
             logging.debug("Download finished")
-            filepath = pdfDir + str(id) + ".pdf"
+            filepath = pdfDir + course["Название"] + ".pdf"
             with open(filepath, "wb") as pdf:
                 pdf.write(response.content)
 
 
 if __name__ == "__main__":
-    data = parse()
+    # data = parse()
     # with open("data.json", "r") as temp:
     #     data = json.load(temp)
     #     temp.close()
-    download(data)
-    writeJson(data)
+    # download(data)
+    # writeJson(data)
+    # pdf_to_txt()
+    # json_to_csv(data)
+    # test1()
+    disciplinesPattern = "Место дисциплины в структуре образовательной программы\n*(.*)"
+    contentPattern = "Содержание (?:дисциплины|курса|программы)\n*.*"
+    test_regexp(disciplinesPattern, contentPattern)
