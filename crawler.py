@@ -39,6 +39,20 @@ def isField(tag):
     return (tag.name == "div") and (tag.find("span") is not None)
 
 
+def get_rid_of_duplicates(program):
+    logging.debug("getting rid of duplicates")
+    pop_list = set()
+    for i in range(len(program)):
+        course = program[i]
+        for j in range(len(program)):
+            if j != i and course == program[j]:
+                pop_list.add(j)
+    for index in pop_list:
+        program.pop(index)
+    logging.debug("popped " + str(len(pop_list)) + " duplicates")
+    return program
+
+
 # Перебираем страницы page1.html, page2.html и тд.
 # Сущестование страницы проверяем функцией isLastPage
 # Если не сущетвует выходим из функции
@@ -52,7 +66,7 @@ def parse():
         response = requests.post(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         if isLastPage(soup):
-            return program
+            return get_rid_of_duplicates(program)
         courses = soup.find_all(
             "div",
             {"class": "first_child last_child b-program__inner"})
@@ -60,7 +74,7 @@ def parse():
             # Берем все значения, кроме года потому что его неудобно парсить))00)0
             courseDescription = {}
             courseName = course.find("h2").string.strip()
-            courseDescription["Название"] = courseName
+            courseDescription["Название"] = courseName.strip()
             # Уберем ненужные теги
             course = course.find("div", {"class": "last_child data"})
             #Описания
@@ -82,7 +96,7 @@ def parse():
                     # Забираем имена преподавателей из всех ссылок данного поля
                     key = u'Преподаватели'
                     links = field.find_all("a")
-                    teachers = [link.string for link in links if link.string]
+                    teachers = set([link.string for link in links if link.string])Ø
                     courseDescription[key] = teachers
                 elif key == u"Автор" or key == u"Авторы":
                     # Забираем имена авторов из всех ссылок данного поля
@@ -100,7 +114,8 @@ def parse():
             program.append(courseDescription)
 
 
-def writeJson(data):
+def write_json(data):
+    logging.debug("writing json")
     file = open("data.json", "w")
     json.dump(data, file, ensure_ascii=False)
     file.close()
@@ -130,15 +145,13 @@ def download(data):
 
 
 if __name__ == "__main__":
-    # data = parse()
+    data = parse()
     # with open("data.json", "r") as temp:
-    #     data = json.load(temp)
-    #     temp.close()
-    # download(data)
-    # writeJson(data)
-    # pdf_to_txt()
-    # json_to_csv(data)
+        # data = json.load(temp)
+        # temp.close()
+    download(data)
+    pdf_to_txt()
+    add_text_data(data)
+    write_json(data)
+    json_to_csv(data)
     # test1()
-    disciplinesPattern = "Место дисциплины в структуре образовательной программы\n*(.*)"
-    contentPattern = "Содержание (?:дисциплины|курса|программы)\n*.*"
-    test_regexp(disciplinesPattern, contentPattern)
