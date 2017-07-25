@@ -4,6 +4,10 @@ import csv
 import re
 import codecs
 import logging
+from tqdm import tqdm
+from lang import detect_language
+from textblob import TextBlob
+import operator
 
 def isCreated(dir):
     try:
@@ -26,9 +30,9 @@ def pdf_to_txt():
     pdfFiles = [pdfDir + i for i in filter(lambda file: file.endswith('.pdf'), files)]
 
     # Переписываем файлы .pdf в .txt
-    for pdfFile in pdfFiles:
+    for pdfFile in tqdm(pdfFiles):
         pdfFileName = pdfFile.split("/")[-1].split(".")[0]
-        textFile = txtDir + pdfFileName + '.txt'
+        textFile = txtDir + pdfFileName.strip() + '.txt'
         # print(pdfFile, textFile)
         subprocess.call(['pdftotext', pdfFile, textFile, '-enc', 'UTF-8'])
 
@@ -54,38 +58,91 @@ def json_to_csv(data):
 
 
 def test_regexp(disciplinesPattern, contentPattern):
+    parsedData = {}
     currentDir = os.getcwd()
     txtDir = currentDir + "/txt"
     courses = os.listdir(txtDir)
     disciplinesCounter = 0
-    contentCounter = 0
+    сontentCounter = 0
     for course in courses:
+        textData = {}
+        # print(course, len(courses))
         filename = txtDir + "/" + course
         with codecs.open(filename, "r", encoding='utf-8', errors='ignore') as f:
             text = f.read()
 
         brokenPattern = "kek"
-        result = re.search(disciplinesPattern, text)
-        if result is None:
+        disciplinesResult = re.search(disciplinesPattern, text, re.DOTALL)
+        if disciplinesResult:
             disciplinesCounter += 1
+            textData["discipline"] = disciplinesResult.group(1)
+        else:
             logging.debug(course + " - disciplines not parsed")
-        result = re.search(contentPattern, text)
-        if result is None:
-            contentCounter += 1
+        # else:
+        #     logging.debug(result.group(1))
+
+        # Ищем содержание дисциплины(проверяем на соответсвие одному из 2 наиболее встречаемых форматов)
+        contentResult1 = re.search(contentPattern[0], text, re.DOTALL)
+        contentResult2 = re.search (contentPattern[1], text, re.DOTALL)
+        if contentResult1:
+            сontentCounter += 1
+            textData["content"] = contentResult1.group(1)
+        elif contentResult2:
+            сontentCounter += 1
+            textData["content"] = contentResult2.group(1)
+        else:
             logging.debug(course + " - content not parsed")
-    logging.debug("Disciplines not found in " + str(disciplinesCounter) + " files")
-    logging.debug("Content not found in " + str(disciplinesCounter) + " files")
-    logging.debug("Number of courses: " + str(len(courses)))
+        courseName = course.split(".")[0]
+        parsedData[courseName.strip()] = textData
+
+    disciplinesAccuracy = disciplinesCounter/len(courses)
+    contentAccuracy = сontentCounter/len(courses)
+    logging.info("Disciplines accuracy: " + str(int(disciplinesAccuracy*100)) + "%" )
+    logging.info("Content accuracy: " + str(int(contentAccuracy*100)) + "%")
+    logging.info("Number of courses: " + str(len(courses)))
+    return parsedData
+
+def add_text_data(data):
+    currentDir = os.getcwd()
+    txtDir = currentDir + "/txt"
+    for course in data:
+        courseName = course["Название"]
+        if u"Прогр. уч. дисц." in course:
+            filename = txtDir + "/" + courseName + ".txt"
+            with codecs.open(filename, "r", encoding='utf-8', errors='ignore') as f:
+                textData = f.read()
+                if detect_language(textData) == "english":
+                    blob = TextBlob(textData)
+                    textData = blob.translate(from_lang="en", to="ru").raw
+
+                course["Text"] = textData
+
+
+
+
+def add_discipline_data(data):
+    disciplinesPattern1 = r"Место дисциплины в структуре образовательной программы\n*(.*)"
+    contentPattern1 = r"Содержание (?:дисциплины|курса|программы)(.*)(?:Образовательные технологии|Оценочные средства для текущего контроля и аттестации студента|Образцы заданий по различным формам контроля|Основная литература )"
+    conentPattern2 = r"Цели освоения (?:дисциплины|курса|программы)(.*)(?:Используемая и рекомендуемая литература)*"
+    contentPatterns = [contentPattern1, conentPattern2]
+    # contentPattern = "Содержание (?:дисциплины|курса|программы)\n*.*"
+    parsedData = test_regexp(disciplinesPattern1, contentPatterns)
+    print(len(data))
+    for course in data:
+        courseName = course["Название"]
+        try:
+            courseTextData = parsedData[courseName]
+        except KeyError:
+            pass
+        if "discipline" in courseTextData:
+            course["discipline"] = courseTextData["discipline"]
+        if "content" in courseTextData:
+            course["content"] = courseTextData["content"]
+
 
 def get_rid_of_shitty_lines(doc):
     shittyLinesPattern = "Национальный исследовательский университет «Высшая школа экономики» Программа дисциплины.*для направления.*подготовки бакалавра"
-    with open(doc, "r") as f:
-        text = f.read()
-        result = re.search(shittyLinesPattern, text)
-        logging.debug(result.group(0))
+    pass
 
-def clearDocuments():
-    currentDir = os.getcwd()
-    txtDir = currentDir + "/txt"
-    courses = os.listdir(txtDir)
-    get_rid_of_shitty_lines()
+def clear_documents():
+    pass
